@@ -1,6 +1,27 @@
 # Bracket — Elixir/Phoenix LiveView Plan
 
-Reference implementation: `../bracket/` (Node.js/Socket.io version)
+## Context (read this first)
+
+**What this is:** A real-time bracket tournament app for friend groups. Anyone creates a bracket for anything (movies, tacos, whatever), shares a link, and the group votes through matchups live. No accounts. The Node.js reference implementation lives at `../bracket/` and is fully working — read its `DESIGN.md` for the full product spec and `server.js` for the game logic.
+
+**Why Elixir:** The user (Connor) is learning Elixir by building real apps. This is a rewrite of the Node.js version. The goal is not to ship fast — it's to learn the language by touching the key concepts: GenServer, OTP supervision, PubSub, LiveView, and pattern matching. Explain what you're doing and why as you build.
+
+**Key learning payoffs to call out as you implement:**
+- `Bracket.Game` — pure functions + pattern matching make game logic cleaner and easier to test than JS
+- `BracketServer` (GenServer) — each bracket gets its own process; crash one, the others keep running
+- Registry + DynamicSupervisor — OTP's built-in way to spawn/track/supervise those processes
+- PubSub + LiveView — replaces all of Socket.io; real-time UI updates with zero custom JS
+
+**Status:** Planning only. Nothing scaffolded yet. Start from step 1 in Build Order.
+
+**First thing to do in a fresh session:**
+1. Check Elixir/Mix version: `elixir --version && mix --version`
+2. Check if Phoenix installer is present: `mix phx.new --version`
+3. If not, install: `mix archive.install hex phx_new`
+4. Then scaffold: `mix phx.new bracket_elixir --live --no-ecto` (no DB needed for v1)
+5. Then start with `Bracket.Game` — pure logic, no Phoenix, fully testable
+
+---
 
 ## Why Elixir for this app
 
