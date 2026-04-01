@@ -1,18 +1,20 @@
 defmodule Bracket.Sanitizer do
   @moduledoc """
   Input sanitization utilities for user-supplied strings.
-  Trims whitespace, escapes HTML, and enforces length limits.
+  Trims whitespace and enforces length limits.
+
+  Note: HTML-escaping is intentionally omitted. Phoenix LiveView's HEEx templates
+  automatically escape all interpolated values, so escaping here would cause
+  double-escaping (e.g. "&" → "&amp;amp;").
   """
 
   @doc """
-  Sanitizes a single string: trims whitespace, HTML-escapes it, then truncates
-  to `max_length` characters.
+  Sanitizes a single string: trims whitespace and truncates to `max_length` characters.
   """
   @spec sanitize(String.t(), pos_integer()) :: String.t()
   def sanitize(string, max_length) when is_binary(string) and is_integer(max_length) do
     string
     |> String.trim()
-    |> html_escape()
     |> String.slice(0, max_length)
   end
 
@@ -31,11 +33,4 @@ defmodule Bracket.Sanitizer do
   end
 
   def sanitize_items(_), do: []
-
-  # Escapes HTML special characters to prevent XSS.
-  defp html_escape(string) do
-    string
-    |> Phoenix.HTML.html_escape()
-    |> Phoenix.HTML.safe_to_string()
-  end
 end

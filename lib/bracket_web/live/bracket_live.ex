@@ -80,8 +80,10 @@ defmodule BracketWeb.BracketLive do
 
     case Bracket.BracketServer.validate_host_token(id, token) do
       :ok ->
-        # Redirect through SessionController to store token in signed session
-        {:noreply, redirect(socket, to: ~p"/session/host?id=#{id}&token=#{token}")}
+        signed =
+          Phoenix.Token.sign(socket, "host_session", %{"id" => id, "token" => token})
+
+        {:noreply, redirect(socket, to: ~p"/session/host?session_token=#{signed}")}
 
       {:error, :unauthorized} ->
         {:noreply, put_flash(socket, :error, "Invalid host recovery token.")}
@@ -567,7 +569,10 @@ defmodule BracketWeb.BracketLive do
       role="timer"
       class="timer-bar h-2 bg-base-300 rounded-full overflow-hidden fixed top-0 left-0 right-0 z-40"
     >
-      <div class="timer-bar-fill h-full bg-primary transition-all duration-1000"></div>
+      <div
+        class="timer-bar-fill h-full bg-primary transition-all duration-1000"
+        style={"--timer-duration: #{@game.timer_seconds}s"}
+      ></div>
     </div>
     """
   end
@@ -657,11 +662,18 @@ defmodule BracketWeb.BracketLive do
       case Bracket.BracketServer.join(id, name, self()) do
         {:ok, participant_id} ->
           # put_session/3 is not available in handle_event.
-          # Redirect through SessionController to store participant_id in the
-          # signed session cookie, which will redirect back to /bracket/:id.
+          # Sign the credentials with Phoenix.Token (expires in 30s) so the
+          # participant_id never appears raw in the URL, preventing session
+          # hijacking via crafted URLs.
+          signed =
+            Phoenix.Token.sign(socket, "participant_session", %{
+              "id" => id,
+              "participant_id" => participant_id
+            })
+
           {:noreply,
            socket
-           |> redirect(to: ~p"/session/participant?id=#{id}&participant_id=#{participant_id}")}
+           |> redirect(to: ~p"/session/participant?session_token=#{signed}")}
 
         {:error, reason} ->
           {:noreply, assign(socket, join_error: format_join_error(reason))}
@@ -821,18 +833,26 @@ defmodule BracketWeb.BracketLive do
     if game == nil do
       {:noreply, socket}
     else
-      updated_rounds =
-        Enum.map(game.rounds, fn round ->
-          updated_matchups =
-            Enum.map(round.matchups, fn matchup ->
-              if matchup.id == matchup_id do
-                %{matchup | votes: %{count_a: count_a, count_b: count_b, total_eligible: total_eligible}}
-              else
-                matchup
-              end
-            end)
+      current_round_idx = game.current_round
 
-          %{round | matchups: updated_matchups}
+      updated_rounds =
+        game.rounds
+        |> Enum.with_index()
+        |> Enum.map(fn {round, idx} ->
+          if idx == current_round_idx do
+            updated_matchups =
+              Enum.map(round.matchups, fn matchup ->
+                if matchup.id == matchup_id do
+                  %{matchup | votes: %{count_a: count_a, count_b: count_b, total_eligible: total_eligible}}
+                else
+                  matchup
+                end
+              end)
+
+            %{round | matchups: updated_matchups}
+          else
+            round
+          end
         end)
 
       {:noreply, assign(socket, game: %{game | rounds: updated_rounds})}
@@ -860,7 +880,7 @@ defmodule BracketWeb.BracketLive do
               :lobby
 
             :active ->
-              participant = get_in(game, [:participants, participant_id])
+              participant = Map.get(game.participants, participant_id)
 
               if participant == nil do
                 :join_form

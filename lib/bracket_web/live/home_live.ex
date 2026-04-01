@@ -243,11 +243,16 @@ defmodule BracketWeb.HomeLive do
       case Bracket.BracketServer.create(%{name: name, items: items, host_name: host_name}) do
         {:ok, id, host_token} ->
           # put_session/3 is not available in LiveView handle_event.
-          # Redirect through the SessionController which sets the signed
-          # session cookie, then redirects to /bracket/:id.
+          # Sign the credentials with Phoenix.Token (expires in 30s) and redirect
+          # through SessionController, which verifies the token and sets the
+          # signed session cookie before redirecting to /bracket/:id.
+          # The actual host_token never appears in the URL.
+          signed =
+            Phoenix.Token.sign(socket, "host_session", %{"id" => id, "token" => host_token})
+
           {:noreply,
            socket
-           |> redirect(to: ~p"/session/host?id=#{id}&token=#{host_token}")}
+           |> redirect(to: ~p"/session/host?session_token=#{signed}")}
 
         {:error, reason} ->
           error_msg = format_error(reason)

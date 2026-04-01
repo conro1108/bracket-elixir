@@ -569,7 +569,7 @@ defmodule Bracket.Game do
       else
         # Build next round
         next_round_idx = game.current_round + 1
-        next_matchups = build_next_round_matchups(winners, round.matchups)
+        next_matchups = build_next_round_matchups(round.matchups)
         next_round = %Round{matchups: next_matchups}
 
         updated_rounds = game.rounds ++ [next_round]
@@ -590,7 +590,7 @@ defmodule Bracket.Game do
     end
   end
 
-  defp build_next_round_matchups(_winners, prev_matchups) do
+  defp build_next_round_matchups(prev_matchups) do
     all_winners =
       prev_matchups
       |> Enum.map(& &1.winner)

@@ -220,11 +220,8 @@ defmodule Bracket.BracketServer do
           # Auto-close when all eligible voters have voted
           case do_close_matchup_state(game) do
             {:ok, closed_game, reply_tuple} ->
+              send_close_broadcasts(closed_game, reply_tuple)
               {:noreply, closed_game}
-              # We ignore the reply_tuple since this is a cast
-              |> tap(fn _ ->
-                send_close_broadcasts(closed_game, reply_tuple)
-              end)
 
             _ ->
               {:noreply, game}
@@ -446,25 +443,32 @@ defmodule Bracket.BracketServer do
   end
 
   defp do_close_matchup_state(%Game{} = state) do
-    case Game.close_matchup(state) do
-      {:ok, game, was_tie_breaker} ->
-        cancel_timer(state)
+    # Guard: only close if the current matchup is still active. This prevents
+    # double-close corruption if auto-close and host close_matchup race.
+    current = get_matchup_by_id(state, state.current_round, state.current_matchup)
 
-        event =
-          cond do
-            game.status == :finished -> :bracket_champion
-            game.current_round > state.current_round -> :round_complete
-            true -> :matchup_closed
-          end
-
-        # Start timer for next matchup if applicable
-        game = if game.status == :active, do: maybe_start_timer(game), else: game
-
-        {:ok, game, {event, was_tie_breaker}}
-
-      {:error, reason} ->
-        {:error, reason}
+    if current == nil or current.status != :active do
+      {:error, :matchup_not_active}
+    else
+      do_close_matchup_state_unchecked(state)
     end
+  end
+
+  defp do_close_matchup_state_unchecked(%Game{} = state) do
+    {:ok, game, was_tie_breaker} = Game.close_matchup(state)
+    cancel_timer(state)
+
+    event =
+      cond do
+        game.status == :finished -> :bracket_champion
+        game.current_round > state.current_round -> :round_complete
+        true -> :matchup_closed
+      end
+
+    # Start timer for next matchup if applicable
+    game = if game.status == :active, do: maybe_start_timer(game), else: game
+
+    {:ok, game, {event, was_tie_breaker}}
   end
 
   defp send_close_broadcasts(game, {event, _was_tie}) do
