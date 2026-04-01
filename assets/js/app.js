@@ -38,38 +38,6 @@ Hooks.FocusManager = {
   }
 }
 
-// ReconnectTracker — tracks disconnect duration, updates overlay state
-Hooks.ReconnectTracker = {
-  mounted() {
-    this.disconnectTime = null
-    this.reconnectingTimer = null
-    this.disconnectedTimer = null
-
-    window.addEventListener("phx:disconnect", () => {
-      this.disconnectTime = Date.now()
-
-      // After 5s: show reconnecting overlay
-      this.reconnectingTimer = setTimeout(() => {
-        this.pushEvent("set_reconnecting", {})
-      }, 5000)
-
-      // After 30s: show disconnected screen
-      this.disconnectedTimer = setTimeout(() => {
-        this.pushEvent("set_disconnected", {})
-      }, 30000)
-    })
-
-    window.addEventListener("phx:reconnect", () => {
-      this.disconnectTime = null
-      clearTimeout(this.reconnectingTimer)
-      clearTimeout(this.disconnectedTimer)
-      this.reconnectingTimer = null
-      this.disconnectedTimer = null
-      this.pushEvent("reconnected", {})
-    })
-  }
-}
-
 // CopyLink — handles copying bracket URL to clipboard
 window.addEventListener("bracket:copy_link", (e) => {
   const input = e.target

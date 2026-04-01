@@ -523,32 +523,6 @@ defmodule BracketWeb.BracketLive do
     """
   end
 
-  defp render_phase(%{phase: :reconnecting} = assigns) do
-    ~H"""
-    <div class="alert alert-warning fixed top-0 left-0 right-0 z-50 rounded-none">
-      <.icon name="hero-arrow-path" class="size-5 animate-spin" />
-      <span>Reconnecting... your votes are saved.</span>
-    </div>
-    <div class="pt-16">
-      {render_phase(Map.put(assigns, :phase, assigns[:prev_phase] || :lobby))}
-    </div>
-    """
-  end
-
-  defp render_phase(%{phase: :disconnected} = assigns) do
-    ~H"""
-    <div class="flex items-center justify-center min-h-screen p-4">
-      <div class="text-center space-y-4">
-        <h1 class="text-3xl font-bold" tabindex="-1" data-focus-target>Connection Lost</h1>
-        <p class="text-base-content/70">Unable to reconnect to the bracket.</p>
-        <button type="button" class="btn btn-primary" onclick="window.location.reload()">
-          Try Again
-        </button>
-      </div>
-    </div>
-    """
-  end
-
   defp render_phase(assigns) do
     ~H"""
     <div class="flex items-center justify-center min-h-screen p-4">
