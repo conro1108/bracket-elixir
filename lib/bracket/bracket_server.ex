@@ -259,37 +259,44 @@ defmodule Bracket.BracketServer do
   end
 
   def handle_info(:host_transfer_warning, state) do
-    # Warn participants that host is disconnected
-    Phoenix.PubSub.broadcast(
-      @pubsub,
-      topic(state.id),
-      {:bracket_event, :host_disconnect_warning, Game.public_view(state)}
-    )
+    # If the host has reconnected since this timer was scheduled, ignore it.
+    if host_connected?(state) do
+      {:noreply, state}
+    else
+      Phoenix.PubSub.broadcast(
+        @pubsub,
+        topic(state.id),
+        {:bracket_event, :host_disconnect_warning, Game.public_view(state)}
+      )
 
-    transfer_ms =
-      Application.get_env(:bracket, :host_disconnect_transfer_ms, 60_000)
+      transfer_ms =
+        Application.get_env(:bracket, :host_disconnect_transfer_ms, 60_000)
 
-    Process.send_after(self(), :host_transfer, transfer_ms)
-    {:noreply, state}
+      Process.send_after(self(), :host_transfer, transfer_ms)
+      {:noreply, state}
+    end
   end
 
   def handle_info(:host_transfer, state) do
-    # Find the longest-tenured non-host participant
-    case find_longest_tenured_non_host(state) do
-      nil ->
-        # No other participants — nothing to do
-        {:noreply, state}
+    # If the host has reconnected since this timer was scheduled, ignore it.
+    if host_connected?(state) do
+      {:noreply, state}
+    else
+      case find_longest_tenured_non_host(state) do
+        nil ->
+          {:noreply, state}
 
-      new_host_id ->
-        {:ok, game, new_host_token} = Game.transfer_host(state, new_host_id)
+        new_host_id ->
+          {:ok, game, new_host_token} = Game.transfer_host(state, new_host_id)
 
-        Phoenix.PubSub.broadcast(
-          @pubsub,
-          topic(game.id),
-          {:bracket_event, :host_transferred, new_host_id, new_host_token, Game.public_view(game)}
-        )
+          Phoenix.PubSub.broadcast(
+            @pubsub,
+            topic(game.id),
+            {:bracket_event, :host_transferred, new_host_id, new_host_token, Game.public_view(game)}
+          )
 
-        {:noreply, game}
+          {:noreply, game}
+      end
     end
   end
 
@@ -412,6 +419,11 @@ defmodule Bracket.BracketServer do
   end
 
   defp maybe_remonitor_host(_old_state, game, _participant_id, _host_token), do: game
+
+  # Returns true if the host's LiveView process is currently alive.
+  # Used to suppress stale disconnect timers after the host reconnects.
+  defp host_connected?(%Game{host_lv_pid: pid}) when is_pid(pid), do: Process.alive?(pid)
+  defp host_connected?(_), do: false
 
   defp maybe_start_timer(%Game{timer_seconds: nil} = game), do: game
 

@@ -197,10 +197,15 @@ defmodule BracketWeb.HomeLive do
   end
 
   def handle_event("remove_item", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-    new_items = List.delete_at(socket.assigns.items, index)
-    errors = validate_items(socket.assigns.errors, new_items)
-    {:noreply, assign(socket, items: new_items, errors: errors)}
+    case Integer.parse(index_str) do
+      {index, _} ->
+        new_items = List.delete_at(socket.assigns.items, index)
+        errors = validate_items(socket.assigns.errors, new_items)
+        {:noreply, assign(socket, items: new_items, errors: errors)}
+
+      :error ->
+        {:noreply, socket}
+    end
   end
 
   def handle_event("bulk_paste", %{"bulk_input" => raw}, socket) do

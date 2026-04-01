@@ -681,7 +681,8 @@ defmodule BracketWeb.BracketLive do
     end
   end
 
-  def handle_event("vote", %{"choice" => choice, "matchup_id" => matchup_id_str}, socket) do
+  def handle_event("vote", %{"choice" => choice, "matchup_id" => matchup_id_str}, socket)
+      when choice in ["a", "b"] do
     matchup_id = parse_matchup_id(matchup_id_str)
 
     Bracket.BracketServer.vote(
@@ -693,6 +694,8 @@ defmodule BracketWeb.BracketLive do
 
     {:noreply, assign(socket, my_vote: choice)}
   end
+
+  def handle_event("vote", _params, socket), do: {:noreply, socket}
 
   def handle_event("start", _params, %{assigns: %{is_host: true}} = socket) do
     case Bracket.BracketServer.start_bracket(socket.assigns.bracket_id, socket.assigns.host_token) do
@@ -735,11 +738,15 @@ defmodule BracketWeb.BracketLive do
   def handle_event("restart", _params, socket), do: {:noreply, socket}
 
   def handle_event("set_timer", %{"value" => seconds_str}, %{assigns: %{is_host: true}} = socket) do
-    seconds = String.to_integer(seconds_str)
+    case Integer.parse(seconds_str) do
+      {seconds, _} ->
+        case Bracket.BracketServer.set_timer(socket.assigns.bracket_id, socket.assigns.host_token, seconds) do
+          :ok -> {:noreply, socket}
+          {:error, reason} -> {:noreply, put_flash(socket, :error, "Could not set timer: #{reason}")}
+        end
 
-    case Bracket.BracketServer.set_timer(socket.assigns.bracket_id, socket.assigns.host_token, seconds) do
-      :ok -> {:noreply, socket}
-      {:error, reason} -> {:noreply, put_flash(socket, :error, "Could not set timer: #{reason}")}
+      :error ->
+        {:noreply, socket}
     end
   end
 
