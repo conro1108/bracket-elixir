@@ -101,30 +101,27 @@ defmodule BracketWeb.BracketLiveTest do
 
   describe "finished bracket (read-only)" do
     test "shows results page for finished bracket", %{conn: conn} do
-      # Play through a full bracket via GenServer
-      {id, host_token, [p2_id]} = advance_to_voting(1)
+      {id, _host_token, [p2_id]} = advance_to_voting(1)
+      Phoenix.PubSub.subscribe(Bracket.PubSub, "bracket:#{id}")
+
       {:ok, game} = Bracket.BracketServer.get_state(id)
       host_id = Enum.find_value(game.participants, fn {k, p} -> p.is_host && k end)
 
-      # Play through all matchups
+      # Play through all matchups; auto-close fires when both players vote
       Enum.each(1..4, fn _ ->
         {:ok, game} = Bracket.BracketServer.get_state(id)
+
         if game.status == :active do
           Bracket.BracketServer.vote(id, host_id, game.current_matchup, :a)
           Bracket.BracketServer.vote(id, p2_id, game.current_matchup, :a)
-          Process.sleep(50)
         end
       end)
 
-      {:ok, game} = Bracket.BracketServer.get_state(id)
+      # Wait for the champion event rather than sleeping (avoids racing the cleanup timer)
+      assert_receive {:bracket_event, :bracket_champion, _game}, 2000
 
-      if game.status == :finished do
-        {:ok, _view, html} = live(conn, ~p"/bracket/#{id}")
-        assert html =~ "Results"
-      else
-        # Bracket may not have finished in time — that's OK for this test
-        assert true
-      end
+      {:ok, _view, html} = live(conn, ~p"/bracket/#{id}")
+      assert html =~ "Results"
     end
   end
 end
