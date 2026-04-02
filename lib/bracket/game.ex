@@ -359,8 +359,7 @@ defmodule Bracket.Game do
 
   defp generate_id do
     :crypto.strong_rand_bytes(6)
-    |> Base.encode64()
-    |> binary_part(0, 8)
+    |> Base.url_encode64(padding: false)
   end
 
   defp generate_participant_id do

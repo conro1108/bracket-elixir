@@ -13,10 +13,12 @@ defmodule BracketWeb.HomeLive do
        page_title: "Create Bracket",
        name: "",
        items: [],
+       new_item: "",
        host_name: "",
        bulk_input: "",
        errors: %{},
        loading: false,
+       min_items: @min_items,
        max_name_length: @max_name_length,
        max_items: @max_items,
        max_item_length: @max_item_length
@@ -37,25 +39,40 @@ defmodule BracketWeb.HomeLive do
 
         <div class="card bg-base-200 shadow-xl">
           <div class="card-body gap-6">
-            <%!-- Bracket Name --%>
-            <div class="fieldset">
-              <label for="bracket-name" class="label mb-1">Bracket Name</label>
-              <input
-                id="bracket-name"
-                type="text"
-                name="name"
-                value={@name}
-                maxlength={@max_name_length}
-                placeholder="e.g. Best Pizza Toppings"
-                class={["w-full input", @errors[:name] && "input-error"]}
-                phx-change="update_name"
-                phx-debounce="300"
-              />
-              <p :if={@errors[:name]} class="mt-1 text-sm text-error flex items-center gap-1">
-                <.icon name="hero-exclamation-circle" class="size-4" />
-                {@errors[:name]}
-              </p>
-            </div>
+            <form id="bracket-form" phx-change="form_changed" phx-submit="create">
+              <%!-- Bracket Name --%>
+              <div class="fieldset mb-6">
+                <label for="bracket-name" class="label mb-1">Bracket Name</label>
+                <input
+                  id="bracket-name"
+                  type="text"
+                  name="name"
+                  value={@name}
+                  maxlength={@max_name_length}
+                  placeholder="e.g. Best Pizza Toppings"
+                  class="w-full input"
+                  phx-debounce="300"
+                />
+              </div>
+
+              <%!-- Host Name --%>
+              <div class="fieldset mb-6">
+                <label for="host-name" class="label mb-1">Your Display Name</label>
+                <input
+                  id="host-name"
+                  type="text"
+                  name="host_name"
+                  value={@host_name}
+                  maxlength="30"
+                  placeholder="Your name"
+                  class="w-full input"
+                  phx-debounce="300"
+                />
+              </div>
+
+              <%!-- Hidden submit so the outer form can be submitted by the Create button --%>
+              <input type="submit" class="hidden" />
+            </form>
 
             <%!-- Items List --%>
             <div class="fieldset">
@@ -80,29 +97,25 @@ defmodule BracketWeb.HomeLive do
                 </li>
               </ul>
 
-              <div class="flex gap-2">
+              <form phx-submit="add_item_submit" class="flex gap-2">
                 <input
                   id="new-item-input"
                   type="text"
                   name="new_item"
                   placeholder="Add an item..."
                   maxlength={@max_item_length}
-                  class={["flex-1 input input-sm", @errors[:items] && "input-error"]}
-                  phx-keyup="add_item"
-                  phx-key="Enter"
+                  class="flex-1 input input-sm"
                 />
-                <button
-                  type="button"
-                  class="btn btn-sm btn-primary"
-                  phx-click={JS.dispatch("keyup", to: "#new-item-input", detail: %{key: "Enter"})}
-                >
+                <button type="submit" class="btn btn-sm btn-primary">
                   Add
                 </button>
-              </div>
+              </form>
 
-              <p :if={@errors[:items]} class="mt-1 text-sm text-error flex items-center gap-1">
-                <.icon name="hero-exclamation-circle" class="size-4" />
-                {@errors[:items]}
+              <p :if={length(@items) > 0 and length(@items) < @min_items} class="mt-1 text-sm text-base-content/50">
+                {@min_items - length(@items)} more needed
+              </p>
+              <p :if={length(@items) > @max_items} class="mt-1 text-sm text-warning">
+                Too many items (max {@max_items})
               </p>
             </div>
 
@@ -123,32 +136,12 @@ defmodule BracketWeb.HomeLive do
               </div>
             </details>
 
-            <%!-- Host Name --%>
-            <div class="fieldset">
-              <label for="host-name" class="label mb-1">Your Display Name</label>
-              <input
-                id="host-name"
-                type="text"
-                name="host_name"
-                value={@host_name}
-                maxlength="30"
-                placeholder="Your name"
-                class={["w-full input", @errors[:host_name] && "input-error"]}
-                phx-change="update_host_name"
-                phx-debounce="300"
-              />
-              <p :if={@errors[:host_name]} class="mt-1 text-sm text-error flex items-center gap-1">
-                <.icon name="hero-exclamation-circle" class="size-4" />
-                {@errors[:host_name]}
-              </p>
-            </div>
-
             <%!-- Submit --%>
             <button
-              type="button"
+              type="submit"
+              form="bracket-form"
               class="btn btn-primary btn-lg w-full"
-              disabled={has_errors?(@errors) || @loading || !form_ready?(@name, @items, @host_name)}
-              phx-click="create"
+              disabled={@loading || !form_ready?(@name, @items, @host_name)}
             >
               <span :if={@loading}>
                 <.icon name="hero-arrow-path" class="size-5 animate-spin" />
@@ -164,44 +157,22 @@ defmodule BracketWeb.HomeLive do
   end
 
   @impl true
-  def handle_event("update_name", %{"value" => value}, socket) do
-    name = String.slice(value, 0, @max_name_length)
-    errors = validate_name(socket.assigns.errors, name)
-    {:noreply, assign(socket, name: name, errors: errors)}
+  def handle_event("form_changed", params, socket) do
+    name = params |> Map.get("name", socket.assigns.name) |> String.slice(0, @max_name_length)
+    host_name = params |> Map.get("host_name", socket.assigns.host_name) |> String.slice(0, 30)
+
+    {:noreply, assign(socket, name: name, host_name: host_name)}
   end
 
-  def handle_event("add_item", %{"value" => value, "key" => "Enter"}, socket) do
-    item = value |> String.trim() |> String.slice(0, @max_item_length)
-
-    if item == "" do
-      {:noreply, socket}
-    else
-      items = socket.assigns.items
-
-      if item in items do
-        {:noreply, socket}
-      else
-        new_items = items ++ [item]
-        errors = validate_items(socket.assigns.errors, new_items)
-
-        {:noreply,
-         socket
-         |> assign(items: new_items, errors: errors)
-         |> push_event("clear_input", %{id: "new-item-input"})}
-      end
-    end
-  end
-
-  def handle_event("add_item", _params, socket) do
-    {:noreply, socket}
+  def handle_event("add_item_submit", %{"new_item" => value}, socket) do
+    add_item(value, socket)
   end
 
   def handle_event("remove_item", %{"index" => index_str}, socket) do
     case Integer.parse(index_str) do
       {index, _} ->
         new_items = List.delete_at(socket.assigns.items, index)
-        errors = validate_items(socket.assigns.errors, new_items)
-        {:noreply, assign(socket, items: new_items, errors: errors)}
+        {:noreply, assign(socket, items: new_items)}
 
       :error ->
         {:noreply, socket}
@@ -221,18 +192,14 @@ defmodule BracketWeb.HomeLive do
       (socket.assigns.items ++ new_items)
       |> Enum.uniq()
 
-    errors = validate_items(socket.assigns.errors, merged)
-    {:noreply, assign(socket, items: merged, bulk_input: raw, errors: errors)}
+    {:noreply, assign(socket, items: merged, bulk_input: raw)}
   end
 
-  def handle_event("update_host_name", %{"value" => value}, socket) do
-    host_name = String.slice(value, 0, 30)
-    errors = validate_host_name(socket.assigns.errors, host_name)
-    {:noreply, assign(socket, host_name: host_name, errors: errors)}
-  end
-
-  def handle_event("create", _params, socket) do
-    %{name: name, items: items, host_name: host_name} = socket.assigns
+  def handle_event("create", params, socket) do
+    # Pull latest values from the form submission params in case phx-change was debounced
+    name = params |> Map.get("name", socket.assigns.name) |> String.slice(0, @max_name_length)
+    host_name = params |> Map.get("host_name", socket.assigns.host_name) |> String.slice(0, 30)
+    items = socket.assigns.items
 
     errors =
       %{}
@@ -241,17 +208,12 @@ defmodule BracketWeb.HomeLive do
       |> validate_host_name(host_name)
 
     if has_errors?(errors) or not form_ready?(name, items, host_name) do
-      {:noreply, assign(socket, errors: errors)}
+      {:noreply, assign(socket, name: name, host_name: host_name, errors: errors)}
     else
-      socket = assign(socket, loading: true)
+      socket = assign(socket, name: name, host_name: host_name, loading: true)
 
       case Bracket.BracketServer.create(%{name: name, items: items, host_name: host_name}) do
         {:ok, id, host_token} ->
-          # put_session/3 is not available in LiveView handle_event.
-          # Sign the credentials with Phoenix.Token (expires in 30s) and redirect
-          # through SessionController, which verifies the token and sets the
-          # signed session cookie before redirecting to /bracket/:id.
-          # The actual host_token never appears in the URL.
           signed =
             Phoenix.Token.sign(socket, "host_session", %{"id" => id, "token" => host_token})
 
@@ -270,6 +232,27 @@ defmodule BracketWeb.HomeLive do
   end
 
   # Private helpers
+
+  defp add_item(value, socket) do
+    item = value |> String.trim() |> String.slice(0, @max_item_length)
+
+    if item == "" do
+      {:noreply, socket}
+    else
+      items = socket.assigns.items
+
+      if item in items do
+        {:noreply, socket}
+      else
+        new_items = items ++ [item]
+
+        {:noreply,
+         socket
+         |> assign(items: new_items)
+         |> push_event("clear_input", %{id: "new-item-input"})}
+      end
+    end
+  end
 
   defp validate_name(errors, name) do
     cond do

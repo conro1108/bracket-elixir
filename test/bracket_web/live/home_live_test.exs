@@ -3,6 +3,25 @@ defmodule BracketWeb.HomeLiveTest do
 
   import Phoenix.LiveViewTest
 
+  # Helpers
+
+  defp fill_form(view, name, host_name) do
+    view |> element("#bracket-form") |> render_change(%{"name" => name, "host_name" => host_name})
+  end
+
+  defp add_item(view, item) do
+    view |> element("form[phx-submit='add_item_submit']") |> render_submit(%{"new_item" => item})
+  end
+
+  defp bulk_paste(view, text) do
+    view |> element("textarea[name='bulk_input']") |> render_change(%{"bulk_input" => text})
+  end
+
+  defp fill_ready_form(view, items \\ ~w[Alpha Beta Gamma Delta]) do
+    fill_form(view, "Test Bracket", "Alice")
+    bulk_paste(view, Enum.join(items, "\n"))
+  end
+
   # Section 3.1 — HomeLive bracket creation tests
 
   describe "mount" do
@@ -23,12 +42,10 @@ defmodule BracketWeb.HomeLiveTest do
   end
 
   describe "adding items" do
-    test "adds an item on Enter keypress", %{conn: conn} do
+    test "adds an item via form submit (Add button or Enter key)", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view
-      |> element("input[name='new_item']")
-      |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
+      add_item(view, "Pizza")
 
       assert has_element?(view, "span", "Pizza")
     end
@@ -36,8 +53,8 @@ defmodule BracketWeb.HomeLiveTest do
     test "does not add duplicate items", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
+      add_item(view, "Pizza")
+      add_item(view, "Pizza")
 
       # Only one list item should exist (duplicate was rejected)
       html = render(view)
@@ -48,8 +65,8 @@ defmodule BracketWeb.HomeLiveTest do
     test "removes an item by index", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Sushi"})
+      add_item(view, "Pizza")
+      add_item(view, "Sushi")
 
       assert has_element?(view, "span", "Pizza")
 
@@ -64,9 +81,7 @@ defmodule BracketWeb.HomeLiveTest do
     test "parses newline-separated items", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view
-      |> element("textarea[name='bulk_input']")
-      |> render_change(%{"bulk_input" => "Pizza\nSushi\nTacos\nBurgers"})
+      bulk_paste(view, "Pizza\nSushi\nTacos\nBurgers")
 
       assert has_element?(view, "span", "Pizza")
       assert has_element?(view, "span", "Sushi")
@@ -77,13 +92,8 @@ defmodule BracketWeb.HomeLiveTest do
     test "deduplicates items from bulk paste", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view
-      |> element("input[name='new_item']")
-      |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
-
-      view
-      |> element("textarea[name='bulk_input']")
-      |> render_change(%{"bulk_input" => "Pizza\nSushi\nTacos\nBurgers"})
+      add_item(view, "Pizza")
+      bulk_paste(view, "Pizza\nSushi\nTacos\nBurgers")
 
       # Pizza should appear only once (was already in the list)
       html = render(view)
@@ -93,44 +103,54 @@ defmodule BracketWeb.HomeLiveTest do
   end
 
   describe "validation" do
-    test "shows error when fewer than 4 items", %{conn: conn} do
+    test "shows gentle hint when fewer than 4 items", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Pizza"})
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Sushi"})
-      view |> element("input[name='new_item']") |> render_keyup(%{"key" => "Enter", "value" => "Tacos"})
+      add_item(view, "Pizza")
+      add_item(view, "Sushi")
 
-      view |> element("input[name='name']") |> render_change(%{"value" => "My Bracket"})
-      view |> element("input[name='host_name']") |> render_change(%{"value" => "Alice"})
-
-      assert has_element?(view, "p.text-error", ~r/at least 4/)
+      # Gentle hint, not an error
+      assert has_element?(view, "p", ~r/more needed/)
+      refute has_element?(view, "p.text-error")
     end
 
-    test "shows error when more than 32 items", %{conn: conn} do
+    test "shows warning when more than 32 items", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      # Add 33 items via bulk paste
       items = Enum.map(1..33, &"Item #{&1}") |> Enum.join("\n")
+      bulk_paste(view, items)
 
-      view
-      |> element("textarea[name='bulk_input']")
-      |> render_change(%{"bulk_input" => items})
-
-      assert has_element?(view, "p.text-error", ~r/Maximum 32/)
+      assert has_element?(view, "p", ~r/Too many/)
     end
 
-    test "shows error when bracket name is empty", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
+    test "no errors shown on fresh form", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/")
 
-      view |> element("input[name='name']") |> render_change(%{"value" => ""})
-
-      assert has_element?(view, "p.text-error", ~r/required/)
+      refute html =~ "text-error"
     end
 
     test "create button is disabled when form is not ready", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/")
 
       assert html =~ ~r/disabled/
+    end
+
+    test "create button is enabled when name, items (>=4), and host name are filled", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      fill_ready_form(view)
+
+      html = render(view)
+      refute Regex.match?(~r/<button[^>]*disabled[^>]*>.*Create Bracket/s, html)
+    end
+
+    test "create button is enabled with 7 items (non-power-of-2, gets a bye)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      fill_ready_form(view, ~w[Alpha Beta Gamma Delta Epsilon Zeta Eta])
+
+      html = render(view)
+      refute Regex.match?(~r/<button[^>]*disabled[^>]*>.*Create Bracket/s, html)
     end
   end
 
@@ -139,22 +159,22 @@ defmodule BracketWeb.HomeLiveTest do
     test "submits form and redirects to bracket", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      # Fill in name
-      view |> element("input[name='name']") |> render_change(%{"value" => "Test Bracket"})
+      fill_ready_form(view)
 
-      # Add 4 items via bulk paste
-      view
-      |> element("textarea[name='bulk_input']")
-      |> render_change(%{"bulk_input" => "Alpha\nBeta\nGamma\nDelta"})
+      view |> element("#bracket-form") |> render_submit(%{"name" => "Test Bracket", "host_name" => "Alice"})
 
-      # Fill in host name
-      view |> element("input[name='host_name']") |> render_change(%{"value" => "Alice"})
+      {path, _flash} = assert_redirect(view)
+      assert String.starts_with?(path, "/session/host")
+    end
 
-      # Submit — this will redirect through SessionController
-      # In test environment, redirect to /session/host is followed
-      view |> element("button[phx-click='create']") |> render_click()
+    @tag :smoke
+    test "creates bracket with non-power-of-2 item count (bye assigned)", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
 
-      # Should redirect to /session/host (which sets the cookie then goes to /bracket/:id)
+      fill_ready_form(view, ~w[Alpha Beta Gamma Delta Epsilon Zeta Eta])
+
+      view |> element("#bracket-form") |> render_submit(%{"name" => "Test Bracket", "host_name" => "Alice"})
+
       {path, _flash} = assert_redirect(view)
       assert String.starts_with?(path, "/session/host")
     end

@@ -153,35 +153,33 @@ defmodule BracketWeb.BracketLive do
             </h1>
             <p class="text-center text-base-content/70 text-sm">Enter your name to join</p>
 
-            <div class="fieldset mt-4">
-              <label for="join-name" class="label mb-1">Display Name</label>
-              <input
-                id="join-name"
-                type="text"
-                name="join_name"
-                value={@join_name}
-                maxlength="30"
-                placeholder="Your name"
-                class={["w-full input", @join_error && "input-error"]}
-                phx-change="update_join_name"
-                phx-debounce="100"
-                phx-keyup="join"
-                phx-key="Enter"
-                autofocus
-              />
-              <p :if={@join_error} class="mt-1 text-sm text-error">
-                {@join_error}
-              </p>
-            </div>
+            <form id="join-form" phx-change="update_join_name" phx-submit="join" class="mt-4 space-y-4">
+              <div class="fieldset">
+                <label for="join-name" class="label mb-1">Display Name</label>
+                <input
+                  id="join-name"
+                  type="text"
+                  name="join_name"
+                  value={@join_name}
+                  maxlength="30"
+                  placeholder="Your name"
+                  class={["w-full input", @join_error && "input-error"]}
+                  phx-debounce="100"
+                  autofocus
+                />
+                <p :if={@join_error} class="mt-1 text-sm text-error">
+                  {@join_error}
+                </p>
+              </div>
 
-            <button
-              type="button"
-              class="btn btn-primary w-full mt-2"
-              disabled={String.trim(@join_name) == ""}
-              phx-click="join"
-            >
-              Join Bracket
-            </button>
+              <button
+                type="submit"
+                class="btn btn-primary w-full"
+                disabled={String.trim(@join_name) == ""}
+              >
+                Join Bracket
+              </button>
+            </form>
 
             <p class="text-center text-xs text-base-content/50 mt-2">
               {map_size(@game.participants)} participant(s) waiting in lobby
@@ -255,6 +253,7 @@ defmodule BracketWeb.BracketLive do
             <input
               :if={@game.timer_seconds != nil}
               type="range"
+              name="timer_seconds"
               min="5"
               max="300"
               value={@game.timer_seconds || 60}
@@ -621,12 +620,16 @@ defmodule BracketWeb.BracketLive do
   # ------------------- EVENTS -------------------
 
   @impl true
-  def handle_event("update_join_name", %{"value" => value}, socket) do
+  def handle_event("update_join_name", %{"join_name" => value}, socket) do
     {:noreply, assign(socket, join_name: value, join_error: nil)}
   end
 
-  def handle_event("join", _params, socket) do
-    name = String.trim(socket.assigns.join_name)
+  def handle_event("join", params, socket) do
+    # Read from submit params as safety net in case phx-change was debounced
+    name =
+      params
+      |> Map.get("join_name", socket.assigns.join_name)
+      |> String.trim()
 
     if name == "" do
       {:noreply, assign(socket, join_error: "Please enter a display name")}
@@ -711,7 +714,7 @@ defmodule BracketWeb.BracketLive do
 
   def handle_event("restart", _params, socket), do: {:noreply, socket}
 
-  def handle_event("set_timer", %{"value" => seconds_str}, %{assigns: %{is_host: true}} = socket) do
+  def handle_event("set_timer", %{"timer_seconds" => seconds_str}, %{assigns: %{is_host: true}} = socket) do
     case Integer.parse(seconds_str) do
       {seconds, _} ->
         case Bracket.BracketServer.set_timer(socket.assigns.bracket_id, socket.assigns.host_token, seconds) do

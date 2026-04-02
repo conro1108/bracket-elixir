@@ -29,10 +29,10 @@ defmodule BracketWeb.BracketLiveTest do
       {:ok, id, _host_token} = create_bracket_server()
       {:ok, view, _html} = live(conn, ~p"/bracket/#{id}")
 
-      view |> element("input#join-name") |> render_change(%{"value" => "Alice"})
+      view |> element("#join-form") |> render_change(%{"join_name" => "Alice"})
 
-      # Clicking join redirects through SessionController
-      view |> element("button[phx-click='join']") |> render_click()
+      # Submitting join form redirects through SessionController
+      view |> element("#join-form") |> render_submit(%{"join_name" => "Alice"})
       {path, _flash} = assert_redirect(view)
       assert String.starts_with?(path, "/session/participant")
     end
@@ -65,8 +65,8 @@ defmodule BracketWeb.BracketLiveTest do
       # host_token is nil in public_view, so we need to use the actual host_token from setup
       # We can't directly test this without the full session flow, but let's verify the page loads
       {:ok, _view, html} = live(conn, ~p"/bracket/#{id}")
-      # The page should load and show the join form since participant_id is injected
-      assert html =~ id
+      # The page should load and show the bracket name
+      assert html =~ "Test Bracket"
     end
   end
 
